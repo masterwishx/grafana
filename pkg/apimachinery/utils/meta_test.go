@@ -1,6 +1,7 @@
 package utils_test
 
 import (
+	"encoding/json"
 	"maps"
 	"testing"
 
@@ -166,7 +167,21 @@ func TestMetaAccessor(t *testing.T) {
 	})
 
 	t.Run("get and set grafana metadata", func(t *testing.T) {
-		res := &unstructured.Unstructured{}
+		res := &unstructured.Unstructured{
+			Object: map[string]any{
+				"spec": map[string]any{
+					"hello": "world",
+				},
+				"status": map[string]any{
+					"sloth": "🦥",
+				},
+				"secure": map[string]any{
+					"field": map[string]any{
+						"guid": "GUID",
+					},
+				},
+			},
+		}
 		meta, err := utils.MetaAccessor(res)
 		require.NoError(t, err)
 
@@ -188,6 +203,38 @@ func TestMetaAccessor(t *testing.T) {
 		rv, err := meta.GetResourceVersionInt64()
 		require.NoError(t, err)
 		require.Equal(t, int64(12345), rv)
+
+		// Make sure access to spec works for Unstructured
+		spec, err := meta.GetSpec()
+		require.NoError(t, err)
+		require.Equal(t, res.Object["spec"], spec)
+		spec = &map[string]string{"a": "b"}
+		err = meta.SetSpec(spec)
+		require.NoError(t, err)
+		spec, err = meta.GetSpec()
+		require.NoError(t, err)
+		require.Equal(t, res.Object["spec"], spec)
+
+		// Make sure access to spec works for Unstructured
+		status, err := meta.GetStatus()
+		require.NoError(t, err)
+		require.Equal(t, res.Object["status"], status)
+		status = &map[string]string{"a": "b"}
+		err = meta.SetStatus(status)
+		require.NoError(t, err)
+		status, err = meta.GetStatus()
+		require.NoError(t, err)
+		require.Equal(t, res.Object["status"], status)
+
+		// Make sure access to spec works for Unstructured
+		secure, ok := meta.GetSecureValues()
+		require.True(t, ok)
+		require.Equal(t, `{"field":{"guid":"guid"}}`, asJSON(secure, false))
+		err = meta.SetSecureValue("x", common.SecureValue{Value: "plaintext"})
+		require.NoError(t, err)
+		secure, ok = meta.GetSecureValues()
+		require.True(t, ok)
+		require.Equal(t, `{"field":{"guid":"guid"},"x":{"value":"plaintext"}}`, asJSON(secure, false))
 	})
 
 	t.Run("blob info", func(t *testing.T) {
@@ -255,4 +302,16 @@ func TestMetaAccessor(t *testing.T) {
 		require.Equal(t, obj2.Spec, spec)
 		require.NoError(t, err)
 	})
+}
+
+func asJSON(v any, pretty bool) string {
+	if v == nil {
+		return ""
+	}
+	if pretty {
+		bytes, _ := json.MarshalIndent(v, "", "  ")
+		return string(bytes)
+	}
+	bytes, _ := json.Marshal(v)
+	return string(bytes)
 }

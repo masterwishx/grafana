@@ -12,6 +12,7 @@ import (
 	common "github.com/grafana/grafana/pkg/apimachinery/apis/common/v0alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -513,7 +514,20 @@ func (m *grafanaMetaAccessor) GetSpec() (spec any, err error) {
 			err = fmt.Errorf("error reading spec")
 		}
 	}()
-	spec = m.r.FieldByName("Spec").Interface()
+
+	f := m.r.FieldByName("Spec")
+	if f.IsValid() {
+		spec = f.Interface()
+		return
+	}
+
+	// Unstructured
+	u, ok := m.raw.(*unstructured.Unstructured)
+	if ok {
+		spec = u.Object["spec"]
+	} else {
+		err = fmt.Errorf("unable to read spec")
+	}
 	return
 }
 
@@ -523,7 +537,20 @@ func (m *grafanaMetaAccessor) SetSpec(s any) (err error) {
 			err = fmt.Errorf("error setting spec")
 		}
 	}()
-	m.r.FieldByName("Spec").Set(reflect.ValueOf(s))
+
+	f := m.r.FieldByName("Spec")
+	if f.IsValid() {
+		f.Set(reflect.ValueOf(s))
+		return
+	}
+
+	// Unstructured
+	u, ok := m.raw.(*unstructured.Unstructured)
+	if ok {
+		u.Object["spec"] = s
+	} else {
+		err = fmt.Errorf("unable to read spec")
+	}
 	return
 }
 
@@ -533,7 +560,20 @@ func (m *grafanaMetaAccessor) GetStatus() (status any, err error) {
 			err = fmt.Errorf("error reading status")
 		}
 	}()
-	status = m.r.FieldByName("Status").Interface()
+
+	f := m.r.FieldByName("Status")
+	if f.IsValid() {
+		status = f.Interface()
+		return
+	}
+
+	// Unstructured
+	u, ok := m.raw.(*unstructured.Unstructured)
+	if ok {
+		status = u.Object["status"]
+	} else {
+		err = fmt.Errorf("unable to read status")
+	}
 	return
 }
 
@@ -543,25 +583,125 @@ func (m *grafanaMetaAccessor) SetStatus(s any) (err error) {
 			err = fmt.Errorf("error setting status")
 		}
 	}()
-	m.r.FieldByName("Status").Set(reflect.ValueOf(s))
+
+	f := m.r.FieldByName("Status")
+	if f.IsValid() {
+		f.Set(reflect.ValueOf(s))
+		return
+	}
+
+	// Unstructured
+	u, ok := m.raw.(*unstructured.Unstructured)
+	if ok {
+		u.Object["status"] = s
+	} else {
+		err = fmt.Errorf("unable to read status")
+	}
 	return
 }
 
+func asSecureValue(in reflect.Value) (v common.SecureValue, ok bool) {
+	if !in.IsValid() {
+		return
+	}
+
+	if in.Kind() == reflect.Map {
+		for _, k := range in.MapKeys() {
+			key := k.Convert(in.Type().Key())
+			if key.CanInterface() {
+				str, found := key.Interface().(string)
+				if found {
+					val := in.MapIndex(key)
+					if val.CanInterface() {
+						vstr, found := key.Interface().(string)
+						if found {
+							switch str {
+							case "guid":
+								v.GUID = vstr
+							case "value":
+								v.Value = vstr
+							case "ref":
+								v.Ref = vstr
+							}
+						}
+						ok = true
+					}
+				}
+			}
+		}
+		return
+	}
+
+	if in.CanInterface() {
+		val, found := in.Interface().(common.SecureValue)
+		return val, found
+	}
+	return
+}
+
+func asSecureValues(in reflect.Value) map[string]common.SecureValue {
+	if in.CanInterface() {
+		iv := in.Interface()
+		m, ok := iv.(map[string]common.SecureValue)
+		if ok {
+			return m
+		}
+		m2, ok := iv.(map[string]any)
+		if ok {
+			m := make(map[string]common.SecureValue)
+			for k, v := range m2 {
+				sv, ok := asSecureValue(reflect.ValueOf(v))
+				if ok {
+					m[k] = sv
+				}
+			}
+			return m
+		}
+	}
+
+	switch in.Kind() {
+	case reflect.Struct:
+		for i := 0; i < in.NumField(); i++ {
+			v := in.Field(i)
+			if !v.IsValid() {
+				continue
+			}
+
+			t := in.Type().Field(i)
+			fmt.Printf("KV [%v = %v]\n", t.Tag.Get("json"), v)
+		}
+		return nil
+	}
+
+	fmt.Printf("Unsupported: %v\n", in)
+
+	return nil
+}
+
 func (m *grafanaMetaAccessor) GetSecureValues() (values map[string]common.SecureValue, ok bool) {
-	ok = true
+	ok = false
 	defer func() {
 		if r := recover(); r != nil {
 			ok = false
 		}
 	}()
 
-	// Could be a struct with explicit fields
-	// A field property (unstructured)
-	// Map<string,SecureValue>
+	f := m.r.FieldByName("Secure")
+	if f.IsValid() {
+		values = asSecureValues(f)
+		ok = true
+		return
+	}
 
-	// A struct with name secure
-	sss := m.r.FieldByName("Secure")
-	fmt.Printf("OUT %+v", sss)
+	// Unstructured
+	u, ok := m.raw.(*unstructured.Unstructured)
+	if ok {
+		v, found := u.Object["secure"]
+		if found {
+			values = asSecureValues(reflect.ValueOf(v))
+		}
+		ok = true
+	}
 	return
 }
 
@@ -571,7 +711,37 @@ func (m *grafanaMetaAccessor) SetSecureValue(field string, value common.SecureVa
 			err = fmt.Errorf("error setting status")
 		}
 	}()
-	m.r.FieldByName("Status").Set(reflect.ValueOf(s))
+
+	// Unstructured
+	u, ok := m.raw.(*unstructured.Unstructured)
+	if ok {
+		v := map[string]any{}
+		if value.GUID != "" {
+			v["guid"] = value.GUID
+		}
+		if value.Value != "" {
+			v["value"] = value.Value
+		}
+		if value.Ref != "" {
+			v["ref"] = value.Ref
+		}
+
+		s, found, err := unstructured.NestedMap(u.Object, "secure")
+		if err != nil {
+			return err
+		}
+		if !found {
+			s = map[string]any{}
+			u.Object["secure"] = s
+		}
+		s[field] = v
+		return nil
+	}
+
+	//	m.r.FieldByName("Secure").Set(reflect.ValueOf(s))
+	if true {
+		return fmt.Errorf("not implemented")
+	}
 	return
 }
 
