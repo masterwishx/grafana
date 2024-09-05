@@ -20,6 +20,17 @@ type SecureValue struct {
 	Ref string `json:"ref,omitempty"`
 }
 
+// Check if oneOf GUID|Value|Ref is populated
+func (v SecureValue) IsValid() bool {
+	if v.GUID != "" {
+		return true
+	}
+	if v.Value != "" {
+		return v.Ref == ""
+	}
+	return v.Ref != ""
+}
+
 // Produce an API definition for secure values (that includes the OneOf detail)
 func (v SecureValue) OpenAPIDefinition() openapi.OpenAPIDefinition {
 	return openapi.OpenAPIDefinition{

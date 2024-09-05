@@ -97,6 +97,9 @@ type GrafanaMetaAccessor interface {
 	SetSpec(any) error
 
 	GetStatus() (any, error)
+
+	// Used by the generic strategy to keep the status value unchanged on an update
+	// NOTE the type must match the existing value, or an error will be thrown
 	SetStatus(any) error
 
 	// Get generic secure values or empty
@@ -613,7 +616,7 @@ func asSecureValue(in reflect.Value) (v common.SecureValue, ok bool) {
 				if found {
 					val := in.MapIndex(key)
 					if val.CanInterface() {
-						vstr, found := key.Interface().(string)
+						vstr, found := val.Interface().(string)
 						if found {
 							switch str {
 							case "guid":
@@ -633,13 +636,21 @@ func asSecureValue(in reflect.Value) (v common.SecureValue, ok bool) {
 	}
 
 	if in.CanInterface() {
-		val, found := in.Interface().(common.SecureValue)
-		return val, found
+		if in.Kind() == reflect.Pointer {
+			val, found := in.Interface().(*common.SecureValue)
+			if val != nil && found {
+				return *val, true
+			}
+		} else {
+			val, found := in.Interface().(common.SecureValue)
+			return val, found
+		}
 	}
 	return
 }
 
 func asSecureValues(in reflect.Value) map[string]common.SecureValue {
+	// First check if it is a simple map
 	if in.CanInterface() {
 		iv := in.Interface()
 		m, ok := iv.(map[string]common.SecureValue)
@@ -655,27 +666,42 @@ func asSecureValues(in reflect.Value) map[string]common.SecureValue {
 					m[k] = sv
 				}
 			}
-			return m
+			if len(m) > 0 {
+				return m
+			}
+			return nil
 		}
 	}
 
 	switch in.Kind() {
 	case reflect.Struct:
+		m := make(map[string]common.SecureValue)
 		for i := 0; i < in.NumField(); i++ {
 			v := in.Field(i)
-			if !v.IsValid() {
-				continue
+			sv, ok := asSecureValue(v)
+			if ok && sv.IsValid() {
+				m[jsonName(in.Type().Field(i))] = sv
 			}
-
-			t := in.Type().Field(i)
-			fmt.Printf("KV [%v = %v]\n", t.Tag.Get("json"), v)
+		}
+		if len(m) > 0 {
+			return m
 		}
 		return nil
 	}
-
-	fmt.Printf("Unsupported: %v\n", in)
-
+	// fmt.Printf("Unsupported: %v\n", in)
 	return nil
+}
+
+func jsonName(f reflect.StructField) string {
+	tag := f.Tag.Get("json")
+	if tag == "" {
+		return f.Name
+	}
+	idx := strings.Index(tag, ",")
+	if idx > 0 {
+		return tag[:idx]
+	}
+	return tag
 }
 
 func (m *grafanaMetaAccessor) GetSecureValues() (values map[string]common.SecureValue, ok bool) {
@@ -706,6 +732,9 @@ func (m *grafanaMetaAccessor) GetSecureValues() (values map[string]common.Secure
 }
 
 func (m *grafanaMetaAccessor) SetSecureValue(field string, value common.SecureValue) (err error) {
+	if !value.IsValid() {
+		return fmt.Errorf("invalid secure value")
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("error setting status")
@@ -732,17 +761,47 @@ func (m *grafanaMetaAccessor) SetSecureValue(field string, value common.SecureVa
 		}
 		if !found {
 			s = map[string]any{}
-			u.Object["secure"] = s
 		}
 		s[field] = v
+		u.Object["secure"] = s
 		return nil
 	}
 
-	//	m.r.FieldByName("Secure").Set(reflect.ValueOf(s))
-	if true {
-		return fmt.Errorf("not implemented")
+	s := m.r.FieldByName("Secure")
+	if s.IsValid() && s.CanInterface() {
+		anyv := s.Interface()
+		if s.Kind() == reflect.Map {
+			var vals map[string]common.SecureValue
+			if anyv == nil {
+				vals = make(map[string]common.SecureValue)
+			} else {
+				vals, ok = anyv.(map[string]common.SecureValue)
+				if !ok {
+					return fmt.Errorf("expecting secure value map.  found %t", anyv)
+				}
+			}
+			vals[field] = value
+			s.Set(reflect.ValueOf(vals))
+			return
+		}
+		if s.Kind() == reflect.Struct {
+			typ := s.Type()
+			for i := 0; i < s.NumField(); i++ {
+				ftype := typ.Field(i)
+				if strings.HasPrefix(ftype.Tag.Get("json"), field) {
+					if ftype.Type.Kind() == reflect.Pointer {
+						s.Field(i).Set(reflect.ValueOf(&value))
+					} else {
+						s.Field(i).Set(reflect.ValueOf(value))
+					}
+					return
+				}
+			}
+			return fmt.Errorf("field not found in struct")
+		}
 	}
-	return
+
+	return fmt.Errorf("unable to set secure value")
 }
 
 func (m *grafanaMetaAccessor) FindTitle(defaultTitle string) string {
