@@ -324,6 +324,50 @@ message WatchEvent {
   Resource previous = 4;
 }
 
+message SecureValue {
+  // A unique identifier for the saved value.  
+  // With this value and an access token allowed to view raw tokens in the group
+  // we can return decrypted values
+  string guid = 1;
+
+  // The decrypted raw value
+  // Used when writing value
+  string value = 2;
+
+  // When accessing shared values, this requests the shared value by name 
+  // This is only valid on write
+  // ???? Likely enterprise only
+  string refid = 3;
+}
+
+// For k8s CREATE+UPDATE requests that contain changes to the secure section
+message WriteSecureFieldsRequest {
+  // The resource identifier
+  ResourceKey key = 1;
+
+  // Write the set of fields for a resource
+  // NOTE, you can keep any existing fields by sending in the existing GUID
+  // Raw values on fields that replace an existing field will get a new GUID in the response
+  map<string,SecureValue> fields = 2;
+}
+
+// Fetch the secure field properties
+message ReadSecureFieldsRequest {
+  // The resource identifier
+  ResourceKey key = 1;
+
+  // Read the decrypted secure values
+  bool decrypt = 2;
+}
+
+message SecureFieldsResponse {
+  // Error details
+  ErrorResult error = 1;
+
+  // The results with GUIDs for each value
+  map<string,SecureValue> fields = 2;
+}
+
 message HistoryRequest {
   // Starting from the requested page (other query parameters must match!)
   string next_page_token = 1;
@@ -415,50 +459,6 @@ message HealthCheckResponse {
   ServingStatus status = 1;
 }
 
-message SecureValue {
-  // A unique identifier for the saved value.  
-  // With this value and an access token allowed to view raw tokens in the group
-  // we can return decrypted values
-  string guid = 1;
-
-  // The decrypted raw value
-  // Used when writing value
-  string value = 2;
-
-  // When accessing shared values, this requests the shared value by name 
-  // This is only valid on write
-  // ???? Likely enterprise only
-  string refid = 3;
-}
-
-// For k8s CREATE+UPDATE requests that contain changes to the secure section
-message WriteSecureFieldsRequest {
-  // The resource identifier
-  ResourceKey key = 1;
-
-  // Write the set of fields for a resource
-  // NOTE, you can keep any existing fields by sending in the existing GUID
-  // Raw values on fields that replace an existing field will get a new GUID in the response
-  map<string,SecureValue> fields = 2;
-}
-
-// Fetch the secure field properties
-message ReadSecureFieldsRequest {
-  // The resource identifier
-  ResourceKey key = 1;
-
-  // Read the decrypted secure values
-  bool decrypt = 2;
-}
-
-message SecureFieldsResponse {
-  // Error details
-  ErrorResult error = 1;
-
-  // The results with GUIDs for each value
-  map<string,SecureValue> fields = 2;
-}
-
 // This provides the CRUD+List+Watch support needed for a k8s apiserver
 // The semantics and behaviors of this service are constrained by kubernetes
 // This does not understand the resource schemas, only deals with json bytes 
@@ -478,6 +478,14 @@ service ResourceStore {
   // This will perform best-effort filtering to increase performace. 
   // NOTE: storage.Interface is ultimatly responsible for the final filtering
   rpc Watch(WatchRequest) returns (stream WatchEvent);
+
+  // Create or update secure values
+  // Writing requires the same permissions to write the resource key
+  rpc WriteSecureFields(WriteSecureFieldsRequest) returns (SecureFieldsResponse);
+
+  // Request decrypted fields
+  // Requires a token with explicit decrypt permissions
+  rpc ReadSecureFields(ReadSecureFieldsRequest) returns (SecureFieldsResponse);
 }
 
 // Unlike the ResourceStore, this service can be exposed to clients directly
@@ -492,14 +500,6 @@ service ResourceIndex {
 
   // Used for efficient provisioning
   rpc Origin(OriginRequest) returns (OriginResponse);
-}
-
-service SecureFieldStore {
-  // Create or update secure values
-  rpc WriteSecureFields(WriteSecureFieldsRequest) returns (SecureFieldsResponse);
-
-  // Request decrypted fields
-  rpc ReadSecureFields(ReadSecureFieldsRequest) returns (SecureFieldsResponse);
 }
 
 // Clients can use this service directly

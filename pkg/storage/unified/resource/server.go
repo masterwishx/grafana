@@ -620,6 +620,18 @@ func (s *server) Origin(ctx context.Context, req *OriginRequest) (*OriginRespons
 	return s.index.Origin(ctx, req)
 }
 
+// Create or update secure values
+// Writing requires the same permissions to write the resource key
+func (s *server) WriteSecureFields(context.Context, *WriteSecureFieldsRequest) (*SecureFieldsResponse, error) {
+	return nil, ErrNotImplementedYet
+}
+
+// Request decrypted fields
+// Requires a token with explicit decrypt permissions
+func (s *server) ReadSecureFields(context.Context, *ReadSecureFieldsRequest) (*SecureFieldsResponse, error) {
+	return nil, ErrNotImplementedYet
+}
+
 // IsHealthy implements ResourceServer.
 func (s *server) IsHealthy(ctx context.Context, req *HealthCheckRequest) (*HealthCheckResponse, error) {
 	if err := s.Init(ctx); err != nil {
