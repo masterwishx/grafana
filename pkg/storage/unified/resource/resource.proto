@@ -478,7 +478,9 @@ service ResourceStore {
   // This will perform best-effort filtering to increase performace. 
   // NOTE: storage.Interface is ultimatly responsible for the final filtering
   rpc Watch(WatchRequest) returns (stream WatchEvent);
+}
 
+service SecureFields {
   // Create or update secure values
   // Writing requires the same permissions to write the resource key
   rpc WriteSecureFields(WriteSecureFieldsRequest) returns (SecureFieldsResponse);
@@ -493,7 +495,7 @@ service ResourceStore {
 service ResourceIndex {
   // TODO: rpc Search(...) ... eventually a typed response
 
-  rpc Read(ReadRequest) returns (ReadResponse); // Duplicated -- for client read only usage
+  // rpc Read(ReadRequest) returns (ReadResponse); // Duplicated -- for client read only usage
 
   // Show resource history (and trash)
   rpc History(HistoryRequest) returns (HistoryResponse);

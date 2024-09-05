@@ -24,8 +24,8 @@ import (
 type ResourceServer interface {
 	ResourceStoreServer
 	ResourceIndexServer
+	SecureFieldsServer
 	DiagnosticsServer
-	LifecycleHooks
 }
 
 type ListIterator interface {
