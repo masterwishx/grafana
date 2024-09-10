@@ -174,23 +174,36 @@ func TestMetaAccessor(t *testing.T) {
 	})
 
 	t.Run("get and set grafana metadata (unstructured)", func(t *testing.T) {
+		// Error reading spec+status when missing
 		res := &unstructured.Unstructured{
-			Object: map[string]any{
-				"spec": map[string]any{
-					"hello": "world",
-				},
-				"status": map[string]any{
-					"sloth": "🦥",
-				},
-				"secure": map[string]any{
-					"field": map[string]any{
-						"guid": "TheGUID",
-					},
-				},
-			},
+			Object: map[string]any{},
 		}
 		meta, err := utils.MetaAccessor(res)
 		require.NoError(t, err)
+		spec, err := meta.GetSpec()
+		require.Error(t, err)
+		require.Nil(t, spec)
+		status, err := meta.GetStatus()
+		require.Error(t, err)
+		require.Nil(t, status)
+		secure, ok := meta.GetSecureValues()
+		require.True(t, ok) // unstructured *can* support secure values
+		require.Nil(t, secure)
+
+		// Now set a spec and status
+		res.Object = map[string]any{
+			"spec": map[string]any{
+				"hello": "world",
+			},
+			"status": map[string]any{
+				"sloth": "🦥",
+			},
+			"secure": map[string]any{
+				"field": map[string]any{
+					"guid": "TheGUID",
+				},
+			},
+		}
 
 		meta.SetOriginInfo(originInfo)
 		meta.SetFolder("folderUID")
@@ -212,7 +225,7 @@ func TestMetaAccessor(t *testing.T) {
 		require.Equal(t, int64(12345), rv)
 
 		// Make sure access to spec works for Unstructured
-		spec, err := meta.GetSpec()
+		spec, err = meta.GetSpec()
 		require.NoError(t, err)
 		require.Equal(t, res.Object["spec"], spec)
 		spec = &map[string]string{"a": "b"}
@@ -223,7 +236,7 @@ func TestMetaAccessor(t *testing.T) {
 		require.Equal(t, res.Object["spec"], spec)
 
 		// Make sure access to spec works for Unstructured
-		status, err := meta.GetStatus()
+		status, err = meta.GetStatus()
 		require.NoError(t, err)
 		require.Equal(t, res.Object["status"], status)
 		status = &map[string]string{"a": "b"}
@@ -232,16 +245,6 @@ func TestMetaAccessor(t *testing.T) {
 		status, err = meta.GetStatus()
 		require.NoError(t, err)
 		require.Equal(t, res.Object["status"], status)
-
-		// Make sure access to spec works for Unstructured
-		secure, ok := meta.GetSecureValues()
-		require.True(t, ok)
-		require.Equal(t, `{"field":{"guid":"TheGUID"}}`, asJSON(secure, false))
-		err = meta.SetSecureValue("x", common.SecureValue{Value: "plaintext"})
-		require.NoError(t, err)
-		secure, ok = meta.GetSecureValues()
-		require.True(t, ok)
-		require.Equal(t, `{"field":{"guid":"TheGUID"},"x":{"value":"plaintext"}}`, asJSON(secure, false))
 	})
 
 	t.Run("get and set grafana metadata (TestResource)", func(t *testing.T) {
@@ -287,16 +290,19 @@ func TestMetaAccessor(t *testing.T) {
 		spec, err = meta.GetSpec()
 		require.NoError(t, err)
 		require.Equal(t, res.Spec, spec)
+		require.Equal(t, `{"title":"t2"}`, asJSON(spec, false))
 
 		// Check read/write status
 		status, err := meta.GetStatus()
 		require.NoError(t, err)
 		require.NotNil(t, status)
-		meta.SetStatus(Spec{Title: "111"})
+		err = meta.SetStatus(Spec{Title: "111"})
+		require.NoError(t, err)
 		status, err = meta.GetStatus()
 		require.NoError(t, err)
 		require.Equal(t, res.Status, status)
 		require.Equal(t, "111", res.Status.Title)
+		require.Equal(t, `{"title":"111"}`, asJSON(status, false))
 
 		// Make sure access to spec works for Unstructured
 		secure, ok := meta.GetSecureValues()

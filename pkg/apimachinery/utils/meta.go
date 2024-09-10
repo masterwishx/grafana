@@ -527,10 +527,12 @@ func (m *grafanaMetaAccessor) GetSpec() (spec any, err error) {
 	// Unstructured
 	u, ok := m.raw.(*unstructured.Unstructured)
 	if ok {
-		spec = u.Object["spec"]
-	} else {
-		err = fmt.Errorf("unable to read spec")
+		spec, ok = u.Object["spec"]
+		if ok {
+			return // no error
+		}
 	}
+	err = fmt.Errorf("unable to read spec")
 	return
 }
 
@@ -552,7 +554,7 @@ func (m *grafanaMetaAccessor) SetSpec(s any) (err error) {
 	if ok {
 		u.Object["spec"] = s
 	} else {
-		err = fmt.Errorf("unable to read spec")
+		err = fmt.Errorf("unable to set spec")
 	}
 	return
 }
@@ -573,10 +575,12 @@ func (m *grafanaMetaAccessor) GetStatus() (status any, err error) {
 	// Unstructured
 	u, ok := m.raw.(*unstructured.Unstructured)
 	if ok {
-		status = u.Object["status"]
-	} else {
-		err = fmt.Errorf("unable to read status")
+		status, ok = u.Object["status"]
+		if ok {
+			return // no error
+		}
 	}
+	err = fmt.Errorf("unable to read status")
 	return
 }
 
