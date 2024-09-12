@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/authlib/claims"
 	"github.com/grafana/grafana/pkg/apimachinery/apis/common/v0alpha1"
 	"github.com/grafana/grafana/pkg/apimachinery/identity"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
@@ -16,9 +17,9 @@ import (
 
 // Called on create
 func (s *Storage) prepareObjectForStorage(ctx context.Context, newObject runtime.Object) ([]byte, error) {
-	user, err := identity.GetRequester(ctx)
-	if err != nil {
-		return nil, err
+	user, ok := claims.From(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no user claims found in request")
 	}
 
 	obj, err := utils.MetaAccessor(newObject)
