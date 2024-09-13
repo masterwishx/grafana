@@ -171,10 +171,10 @@ func addKnownTypes(scheme *runtime.Scheme, gv schema.GroupVersion) {
 		&datasource.DataSourceConnection{},
 		&datasource.DataSourceConnectionList{},
 		&datasource.HealthCheckResult{},
+		&unstructured.Unstructured{},
 		// Currently only for testdata
 		&datasource.GenericDataSourceSettings{},
 		&datasource.GenericDataSourceSettingsList{},
-		&unstructured.Unstructured{},
 		// Query handler
 		&query.QueryDataRequest{},
 		&query.QueryDataResponse{},

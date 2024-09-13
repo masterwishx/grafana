@@ -24,6 +24,7 @@ func NewResourceServer(db infraDB.DB, cfg *setting.Cfg, features featuremgmt.Fea
 		return nil, err
 	}
 	opts.Backend = store
+	opts.Secure = store
 	opts.Diagnostics = store
 	opts.Lifecycle = store
 

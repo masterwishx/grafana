@@ -27,6 +27,7 @@ type Backend interface {
 	resource.StorageBackend
 	resource.DiagnosticsServer
 	resource.LifecycleHooks
+	resource.SecureBackend
 }
 
 type BackendOptions struct {

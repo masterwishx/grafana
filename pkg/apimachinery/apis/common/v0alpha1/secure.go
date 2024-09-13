@@ -23,7 +23,7 @@ type SecureValue struct {
 // Check if oneOf GUID|Value|Ref is populated
 func (v SecureValue) IsValid() bool {
 	if v.GUID != "" {
-		return true
+		return v.Value == "" && v.Ref == ""
 	}
 	if v.Value != "" {
 		return v.Ref == ""

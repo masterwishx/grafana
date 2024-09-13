@@ -12,7 +12,6 @@ import (
 type ResourceClient interface {
 	ResourceStoreClient
 	ResourceIndexClient
-	SecureFieldsClient
 	DiagnosticsClient
 }
 
@@ -20,7 +19,6 @@ type ResourceClient interface {
 type resourceClient struct {
 	ResourceStoreClient
 	ResourceIndexClient
-	SecureFieldsClient
 	DiagnosticsClient
 }
 
@@ -29,7 +27,6 @@ func NewResourceClient(channel *grpc.ClientConn) ResourceClient {
 	return &resourceClient{
 		ResourceStoreClient: NewResourceStoreClient(cc),
 		ResourceIndexClient: NewResourceIndexClient(cc),
-		SecureFieldsClient:  NewSecureFieldsClient(cc),
 		DiagnosticsClient:   NewDiagnosticsClient(cc),
 	}
 }
@@ -52,7 +49,6 @@ func NewLocalResourceClient(server ResourceServer) ResourceClient {
 	return &resourceClient{
 		ResourceStoreClient: NewResourceStoreClient(cc),
 		ResourceIndexClient: NewResourceIndexClient(cc),
-		SecureFieldsClient:  NewSecureFieldsClient(cc),
 		DiagnosticsClient:   NewDiagnosticsClient(cc),
 	}
 }

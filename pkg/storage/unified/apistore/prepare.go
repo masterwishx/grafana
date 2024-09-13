@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/grafana/authlib/claims"
-	"github.com/grafana/grafana/pkg/apimachinery/apis/common/v0alpha1"
-	"github.com/grafana/grafana/pkg/apimachinery/identity"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/grafana/grafana/pkg/storage/unified/resource"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -16,21 +15,21 @@ import (
 )
 
 // Called on create
-func (s *Storage) prepareObjectForStorage(ctx context.Context, newObject runtime.Object) ([]byte, error) {
+func (s *Storage) prepareObjectForStorage(ctx context.Context, newObject runtime.Object) ([]byte, map[string]*resource.SecureValue, error) {
 	user, ok := claims.From(ctx)
 	if !ok {
-		return nil, fmt.Errorf("no user claims found in request")
+		return nil, nil, fmt.Errorf("no user claims found in request")
 	}
 
 	obj, err := utils.MetaAccessor(newObject)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if obj.GetName() == "" {
-		return nil, fmt.Errorf("new object must have a name")
+		return nil, nil, fmt.Errorf("new object must have a name")
 	}
 	if obj.GetResourceVersion() != "" {
-		return nil, storage.ErrResourceVersionSetOnCreate
+		return nil, nil, storage.ErrResourceVersionSetOnCreate
 	}
 	obj.SetGenerateName("") // Clear the random name field
 	obj.SetResourceVersion("")
@@ -39,7 +38,7 @@ func (s *Storage) prepareObjectForStorage(ctx context.Context, newObject runtime
 	// Read+write will verify that origin format is accurate
 	origin, err := obj.GetOriginInfo()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	obj.SetOriginInfo(origin)
 	obj.SetUpdatedBy("")
@@ -47,114 +46,99 @@ func (s *Storage) prepareObjectForStorage(ctx context.Context, newObject runtime
 	obj.SetCreatedBy(user.GetUID())
 
 	// Secure fields exist
-	err = s.updateSecureFields(ctx, obj)
+	secure, err := s.updateSecureFields(obj)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var buf bytes.Buffer
 	err = s.codec.Encode(newObject, &buf)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), secure, nil
 }
 
 // Called on update
-func (s *Storage) prepareObjectForUpdate(ctx context.Context, updateObject runtime.Object, previousObject runtime.Object) ([]byte, error) {
-	user, err := identity.GetRequester(ctx)
-	if err != nil {
-		return nil, err
+func (s *Storage) prepareObjectForUpdate(ctx context.Context, updateObject runtime.Object, previousObject runtime.Object) ([]byte, map[string]*resource.SecureValue, error) {
+	user, ok := claims.From(ctx)
+	if !ok {
+		return nil, nil, fmt.Errorf("no user claims found in request")
 	}
 
 	obj, err := utils.MetaAccessor(updateObject)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if obj.GetName() == "" {
-		return nil, fmt.Errorf("updated object must have a name")
+		return nil, nil, fmt.Errorf("updated object must have a name")
 	}
 
 	previous, err := utils.MetaAccessor(previousObject)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	obj.SetUID(previous.GetUID())
 	obj.SetCreatedBy(previous.GetCreatedBy())
 	obj.SetCreationTimestamp(previous.GetCreationTimestamp())
 
-	// Secure fields exist
-	err = s.updateSecureFields(ctx, obj)
-	if err != nil {
-		return nil, err
-	}
-
 	// Read+write will verify that origin format is accurate
 	origin, err := obj.GetOriginInfo()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	obj.SetOriginInfo(origin)
 	obj.SetUpdatedBy(user.GetUID())
 	obj.SetUpdatedTimestampMillis(time.Now().UnixMilli())
 
+	// Secure fields exist
+	secure, err := s.updateSecureFields(obj)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	var buf bytes.Buffer
 	err = s.codec.Encode(updateObject, &buf)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), secure, nil
 }
 
 // Called on update
-func (s *Storage) updateSecureFields(ctx context.Context, obj utils.GrafanaMetaAccessor) error {
+func (s *Storage) updateSecureFields(obj utils.GrafanaMetaAccessor) (map[string]*resource.SecureValue, error) {
 	// Secure fields exist
 	secure, ok := obj.GetSecureValues()
 	if !ok || len(secure) < 1 {
-		return nil
+		return nil, nil
 	}
 
-	// Find the fields we need to replace
-	req := &resource.WriteSecureFieldsRequest{
-		Fields: make(map[string]*resource.SecureValue),
-	}
+	fields := make(map[string]*resource.SecureValue, len(secure))
 	for k, v := range secure {
 		if !v.IsValid() {
-			return fmt.Errorf("invalid secure value: " + k)
+			return nil, fmt.Errorf("invalid secure value: " + k)
 		}
-		if v.GUID != "" {
-			continue // no need to update anything
+
+		// Move the raw values in the resource to the secure value section
+		// and replace the resource payload with a new GUID
+		sv := &resource.SecureValue{Guid: v.GUID}
+		if v.GUID == "" {
+			sv.Guid = uuid.NewString()
+			sv.Value = v.Value
+			sv.Refid = v.Ref
+
+			v.GUID = sv.Guid
+			v.Value = ""
+			v.Ref = ""
+
+			// Update the value
+			err := obj.SetSecureValue(k, v)
+			if err != nil {
+				return nil, err
+			}
 		}
-		if v.Ref != "" {
-			return fmt.Errorf("invalid secure value: " + k + " // reference fields not yet supported")
-		}
-		req.Fields[k] = &resource.SecureValue{
-			Guid:  v.GUID,
-			Value: v.Value,
-		}
+		fields[k] = sv
 	}
 
-	if len(req.Fields) > 0 {
-		req.Key = &resource.ResourceKey{
-			Namespace: obj.GetNamespace(),
-			Group:     s.gr.Group,
-			Resource:  s.gr.Resource,
-			Name:      obj.GetName(),
-		}
-		rsp, err := s.store.WriteSecureFields(ctx, req)
-		if err != nil {
-			return err
-		}
-		if rsp.Error != nil {
-			return resource.GetError(rsp.Error)
-		}
-		for k, v := range rsp.Fields {
-			obj.SetSecureValue(k, v0alpha1.SecureValue{
-				GUID:  v.Guid,
-				Value: v.Value,
-				Ref:   v.Refid,
-			})
-		}
-	}
-	return nil
+	return fields, nil
 }

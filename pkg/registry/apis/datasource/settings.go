@@ -1,15 +1,24 @@
 package datasource
 
 import (
+	"github.com/grafana/grafana/pkg/apimachinery/utils"
+	grafanaregistry "github.com/grafana/grafana/pkg/apiserver/registry/generic"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
-
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
-	grafanaregistry "github.com/grafana/grafana/pkg/apiserver/registry/generic"
+	"k8s.io/apiserver/pkg/registry/rest"
 )
 
-func newSettingsStorage(scheme *runtime.Scheme, resourceInfo utils.ResourceInfo, optsGetter generic.RESTOptionsGetter) (*genericregistry.Store, error) {
+var (
+	_ rest.Storage = (*settingsStorage)(nil)
+)
+
+type settingsStorage struct {
+	resourceInfo utils.ResourceInfo
+	*genericregistry.Store
+}
+
+func newSettingsStorage(scheme *runtime.Scheme, resourceInfo utils.ResourceInfo, optsGetter generic.RESTOptionsGetter) (*settingsStorage, error) {
 	strategy := grafanaregistry.NewStrategy(scheme, resourceInfo.GroupVersion())
 	store := &genericregistry.Store{
 		NewFunc:                   resourceInfo.NewFunc,
@@ -27,5 +36,12 @@ func newSettingsStorage(scheme *runtime.Scheme, resourceInfo utils.ResourceInfo,
 
 	options := &generic.StoreOptions{RESTOptions: optsGetter, AttrFunc: grafanaregistry.GetAttrs}
 	err := store.CompleteWithOptions(options)
-	return store, err
+	return &settingsStorage{
+		resourceInfo: resourceInfo,
+		Store:        store,
+	}, err
+}
+
+func (s *settingsStorage) ShortNames() []string {
+	return s.resourceInfo.GetShortNames()
 }
