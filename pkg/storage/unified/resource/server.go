@@ -551,6 +551,14 @@ func (s *server) Read(ctx context.Context, req *ReadRequest) (*ReadResponse, err
 	// TODO, check folder permissions etc
 
 	if req.DecryptSecureValues {
+		if req.ResourceVersion > 0 {
+			rsp.Error = &ErrorResult{
+				Message: "Decrypting values is only supported when fetching the latest resource version",
+				Code:    http.StatusBadRequest,
+			}
+			return rsp, nil
+		}
+
 		if s.secure == nil {
 			rsp.Error = &ErrorResult{
 				Message: "no secure backend is configured",

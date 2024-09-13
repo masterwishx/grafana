@@ -5,7 +5,8 @@ import (
 	spec "k8s.io/kube-openapi/pkg/validation/spec"
 )
 
-// Only one property is valid at a time
+// When writing values, only one property is valid at a time
+// When reading, GUID will always be set, the Value+Ref *may* be set
 type SecureValue struct {
 	// GUID is a unique identifier for this exact field
 	// it must match the same group+resource+namespace+name where it was created
