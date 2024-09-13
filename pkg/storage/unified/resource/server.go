@@ -549,6 +549,20 @@ func (s *server) Read(ctx context.Context, req *ReadRequest) (*ReadResponse, err
 
 	rsp := s.backend.ReadResource(ctx, req)
 	// TODO, check folder permissions etc
+
+	if req.DecryptSecureValues {
+		if s.secure == nil {
+			rsp.Error = &ErrorResult{
+				Message: "no secure backend is configured",
+				Code:    http.StatusNotImplemented,
+			}
+		} else {
+			// TODO -- check permissions to decrypt!
+			// then we don't have to do it in the secure service????
+			rsp.SecureValues, rsp.Error = s.secure.ReadSecureFields(ctx, req.Key, true)
+		}
+	}
+
 	return rsp, nil
 }
 
@@ -694,12 +708,6 @@ func (s *server) Origin(ctx context.Context, req *OriginRequest) (*OriginRespons
 		return nil, err
 	}
 	return s.index.Origin(ctx, req)
-}
-
-// Request decrypted fields
-// Requires a token with explicit decrypt permissions
-func (s *server) ReadSecureFields(context.Context, *ReadSecureFieldsRequest) (*SecureFieldsResponse, error) {
-	return nil, ErrNotImplementedYet
 }
 
 // IsHealthy implements ResourceServer.
