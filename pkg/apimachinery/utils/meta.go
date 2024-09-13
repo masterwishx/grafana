@@ -677,13 +677,12 @@ func asSecureValues(in reflect.Value) map[string]common.SecureValue {
 		}
 	}
 
-	switch in.Kind() {
-	case reflect.Struct:
+	if in.Kind() == reflect.Struct {
 		m := make(map[string]common.SecureValue)
 		for i := 0; i < in.NumField(); i++ {
 			v := in.Field(i)
 			sv, ok := asSecureValue(v)
-			if ok {
+			if ok && (sv.GUID != "" || sv.Ref != "" || sv.Value != "") {
 				m[jsonName(in.Type().Field(i))] = sv
 			}
 		}
@@ -692,6 +691,7 @@ func asSecureValues(in reflect.Value) map[string]common.SecureValue {
 		}
 		return nil
 	}
+
 	// fmt.Printf("Unsupported: %v\n", in)
 	return nil
 }
