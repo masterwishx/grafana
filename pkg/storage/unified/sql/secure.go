@@ -2,6 +2,7 @@ package sql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -11,7 +12,11 @@ import (
 // UpdateSecureFields implements SecureBackend.
 func (b *backend) UpdateSecureFields(ctx context.Context, key *resource.ResourceKey, fields map[string]*resource.SecureValue) *resource.ErrorResult {
 	if true {
-		fmt.Printf("TODO... just pretend for now: %+v\n", fields)
+		pretty, err := json.MarshalIndent(fields, "", "  ")
+		if err != nil {
+			return resource.AsErrorResult(err)
+		}
+		fmt.Printf("TODO... just pretend for now: %s\n", string(pretty))
 		return nil //
 	}
 	return &resource.ErrorResult{
@@ -22,6 +27,18 @@ func (b *backend) UpdateSecureFields(ctx context.Context, key *resource.Resource
 
 // ReadSecureFields implements SecureBackend.
 func (b *backend) ReadSecureFields(ctx context.Context, key *resource.ResourceKey, decrypt bool) (map[string]*resource.SecureValue, *resource.ErrorResult) {
+	if true {
+		return map[string]*resource.SecureValue{
+			"aaaa": {
+				Guid:  "FetchTheGUID A",
+				Value: "TODO Fetch and decrypt aaaa",
+			},
+			"bbbb": {
+				Guid:  "FetchTheGUID B",
+				Value: "TODO Fetch and decrypt bbbb",
+			},
+		}, nil
+	}
 	return nil, &resource.ErrorResult{
 		Message: "Not yet implemented in SQL",
 		Code:    http.StatusNotImplemented,

@@ -683,7 +683,7 @@ func asSecureValues(in reflect.Value) map[string]common.SecureValue {
 		for i := 0; i < in.NumField(); i++ {
 			v := in.Field(i)
 			sv, ok := asSecureValue(v)
-			if ok && sv.IsValid() {
+			if ok {
 				m[jsonName(in.Type().Field(i))] = sv
 			}
 		}
@@ -736,9 +736,6 @@ func (m *grafanaMetaAccessor) GetSecureValues() (values map[string]common.Secure
 }
 
 func (m *grafanaMetaAccessor) SetSecureValue(field string, value common.SecureValue) (err error) {
-	if !value.IsValid() {
-		return fmt.Errorf("invalid secure value")
-	}
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("error setting status")
@@ -786,7 +783,7 @@ func (m *grafanaMetaAccessor) SetSecureValue(field string, value common.SecureVa
 			}
 			vals[field] = value
 			s.Set(reflect.ValueOf(vals))
-			return
+			return err
 		}
 		if s.Kind() == reflect.Struct {
 			typ := s.Type()
@@ -798,7 +795,7 @@ func (m *grafanaMetaAccessor) SetSecureValue(field string, value common.SecureVa
 					} else {
 						s.Field(i).Set(reflect.ValueOf(value))
 					}
-					return
+					return err // nil
 				}
 			}
 			return fmt.Errorf("field not found in struct")

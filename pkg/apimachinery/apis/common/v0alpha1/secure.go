@@ -21,7 +21,7 @@ type SecureValue struct {
 }
 
 // Check if oneOf GUID|Value|Ref is populated
-func (v SecureValue) IsValid() bool {
+func (v SecureValue) IsValidForWrite() bool {
 	if v.GUID != "" {
 		return v.Value == "" && v.Ref == ""
 	}

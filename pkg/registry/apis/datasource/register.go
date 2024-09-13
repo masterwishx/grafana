@@ -19,6 +19,8 @@ import (
 	"github.com/grafana/grafana/pkg/services/apiserver/builder"
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/pluginsintegration/pluginstore"
+	"github.com/grafana/grafana/pkg/storage/unified/apistore"
+	"github.com/grafana/grafana/pkg/storage/unified/resource"
 	"github.com/grafana/grafana/pkg/tsdb/grafana-testdata-datasource/kinds"
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,6 +48,7 @@ type DataSourceAPIBuilder struct {
 	datasources     PluginDatasourceProvider
 	contextProvider PluginContextWrapper
 	accessControl   accesscontrol.AccessControl
+	unified         resource.ResourceClient
 	queryTypes      *query.QueryTypeDefinitionList
 	log             log.Logger
 }
@@ -59,6 +62,7 @@ func RegisterAPIService(
 	pluginStore pluginstore.Store,
 	accessControl accesscontrol.AccessControl,
 	reg prometheus.Registerer,
+	unified resource.ResourceClient,
 ) (*DataSourceAPIBuilder, error) {
 	// This requires devmode!
 	if !features.IsEnabledGlobally(featuremgmt.FlagGrafanaAPIServerWithExperimentalAPIs) {
@@ -89,6 +93,9 @@ func RegisterAPIService(
 		if err != nil {
 			return nil, err
 		}
+
+		// Add the client
+		builder.unified = unified
 
 		// testdata when running local dev will add a settings object
 		if ds.ID == "grafana-testdata-datasource" && features.IsEnabledGlobally(featuremgmt.FlagGrafanaAPIServerWithExperimentalAPIs) {
@@ -245,6 +252,11 @@ func (b *DataSourceAPIBuilder) GetAPIGroupInfo(
 		if err != nil {
 			return nil, err
 		}
+		// Expose the secure client
+		storage[b.settingsResourceInfo.StoragePath("secure")] = apistore.NewSecureConnector(
+			b.unified,
+			*b.settingsResourceInfo,
+		)
 	}
 
 	// Create the group info

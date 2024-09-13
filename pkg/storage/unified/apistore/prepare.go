@@ -115,8 +115,8 @@ func (s *Storage) updateSecureFields(obj utils.GrafanaMetaAccessor) (map[string]
 
 	fields := make(map[string]*resource.SecureValue, len(secure))
 	for k, v := range secure {
-		if !v.IsValid() {
-			return nil, fmt.Errorf("invalid secure value: " + k)
+		if !v.IsValidForWrite() {
+			return nil, fmt.Errorf("unable to write secure value: %s", k)
 		}
 
 		// Move the raw values in the resource to the secure value section
